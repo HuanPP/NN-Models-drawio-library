@@ -446,9 +446,31 @@ def model_unet():
     connect_right(d, up1, cat1)
     connect_right(d, cat1, dec1)
     connect_points(d, cx(dec1), dec1['y'], cx(out), out['y'] + out['h'])
-    connect_points_via_x(d, right(enc3)[0], right(enc3)[1], left(cat3)[0], left(cat3)[1], cat3['x'] - 32, 'arrow_skip')
-    connect_points_via_x(d, right(enc2)[0], right(enc2)[1], left(cat2)[0], left(cat2)[1], cat2['x'] - 48, 'arrow_skip')
-    connect_points_via_x(d, right(enc1)[0], right(enc1)[1], left(cat1)[0], left(cat1)[1], cat1['x'] - 64, 'arrow_skip')
+
+    skip_bus_x = dec3['x'] + dec3['w'] + 30
+
+    enc1_rx, enc1_ry = right(enc1)
+    cat1_tx, cat1_ty = cx(cat1), cat1['y']
+    connect_points(d, enc1_rx, enc1_ry, skip_bus_x, enc1_ry, 'arrow_skip_seg')
+    connect_points(d, skip_bus_x, enc1_ry, skip_bus_x, cat1_ty - 10, 'arrow_skip_seg')
+    connect_points(d, skip_bus_x, cat1_ty - 10, cat1_tx, cat1_ty - 10, 'arrow_skip_seg')
+    connect_points(d, cat1_tx, cat1_ty - 10, cat1_tx, cat1_ty, 'arrow_skip')
+
+    skip_bus_x2 = skip_bus_x - 15
+    enc2_rx, enc2_ry = right(enc2)
+    cat2_tx, cat2_ty = cx(cat2), cat2['y']
+    connect_points(d, enc2_rx, enc2_ry, skip_bus_x2, enc2_ry, 'arrow_skip_seg')
+    connect_points(d, skip_bus_x2, enc2_ry, skip_bus_x2, cat2_ty - 10, 'arrow_skip_seg')
+    connect_points(d, skip_bus_x2, cat2_ty - 10, cat2_tx, cat2_ty - 10, 'arrow_skip_seg')
+    connect_points(d, cat2_tx, cat2_ty - 10, cat2_tx, cat2_ty, 'arrow_skip')
+
+    skip_bus_x3 = skip_bus_x - 30
+    enc3_rx, enc3_ry = right(enc3)
+    cat3_tx, cat3_ty = cx(cat3), cat3['y']
+    connect_points(d, enc3_rx, enc3_ry, skip_bus_x3, enc3_ry, 'arrow_skip_seg')
+    connect_points(d, skip_bus_x3, enc3_ry, skip_bus_x3, cat3_ty - 10, 'arrow_skip_seg')
+    connect_points(d, skip_bus_x3, cat3_ty - 10, cat3_tx, cat3_ty - 10, 'arrow_skip_seg')
+    connect_points(d, cat3_tx, cat3_ty - 10, cat3_tx, cat3_ty, 'arrow_skip')
     return make_entry('U-Net', d)
 
 
@@ -519,7 +541,17 @@ def model_faster_rcnn():
     connect_right(d, backbone, rpn_conv)
     connect_down(d, rpn_conv, rpn_cls)
     connect_down(d, rpn_conv, rpn_reg)
-    connect_right(d, backbone, roi)
+    rpn_container_bottom = 175
+    rpn_container_right = 274
+    bk_rx, bk_ry = right(backbone)
+    roi_lx, roi_ly = left(roi)
+    via_x = rpn_container_right + 10
+    via_y = rpn_container_bottom + 15
+
+    connect_points(d, bk_rx, bk_ry, via_x, bk_ry, 'arrow_seg')
+    connect_points(d, via_x, bk_ry, via_x, via_y, 'arrow_seg')
+    connect_points(d, via_x, via_y, roi_lx, via_y, 'arrow_seg')
+    connect_points(d, roi_lx, via_y, roi_lx, roi_ly, 'arrow')
     connect_right(d, rpn_cls, roi, 'arrow_skip')
     connect_right(d, rpn_reg, roi, 'arrow_skip')
     connect_right(d, roi, fc_head)
@@ -866,9 +898,18 @@ def model_conditional_gan():
     connect_down(d, g, fake)
     connect_right(d, fake, concat_fake)
     connect_right(d, real, concat_real)
-    cond_bus_x = concat_fake['x'] - 34
-    connect_points_via_x(d, right(cond)[0], right(cond)[1], left(concat_fake)[0], left(concat_fake)[1], cond_bus_x)
-    connect_points_via_x(d, right(cond)[0], right(cond)[1], left(concat_real)[0], left(concat_real)[1], cond_bus_x)
+    cond_bus_x = 5
+    cond_lx = cond['x']
+    cond_ry = cy(cond)
+
+    cf_lx, cf_ly = left(concat_fake)
+    connect_points(d, cond_lx, cond_ry, cond_bus_x, cond_ry, 'arrow_seg')
+    connect_points(d, cond_bus_x, cond_ry, cond_bus_x, cf_ly, 'arrow_seg')
+    connect_points(d, cond_bus_x, cf_ly, cf_lx, cf_ly, 'arrow')
+
+    cr_lx, cr_ly = left(concat_real)
+    connect_points(d, cond_bus_x, cf_ly, cond_bus_x, cr_ly, 'arrow_seg')
+    connect_points(d, cond_bus_x, cr_ly, cr_lx, cr_ly, 'arrow')
     disc_in_x, disc_in_y = left(disc)
     disc_bus_x = disc_in_x - 20
     for cnode in [concat_fake, concat_real]:
