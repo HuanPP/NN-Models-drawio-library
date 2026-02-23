@@ -385,13 +385,29 @@ def model_inception_module():
     p4b = d.add_vertex('1x1', 253, 142, 56, 28, 'conv_sm')
     concat_node = d.add_vertex('C', 158, 192, 34, 34, 'concat')
     out = d.add_vertex('Output', 130, 250, 90, 30, 'output')
-    for branch in [p1, p2a, p3a, p4a]:
-        connect_down(d, inp, branch)
+    # Staggered fan-out from input to 4 branches
+    inp_x, inp_y = bottom(inp)
+    # Branch 1 (p1): via-point at y=78 (minimal offset)
+    connect_points_via_y(d, inp_x, inp_y, cx(p1), p1['y'], 78)
+    # Branch 2 (p2a): via-point at y=93 (+15pt stagger)
+    connect_points_via_y(d, inp_x, inp_y, cx(p2a), p2a['y'], 93)
+    # Branch 3 (p3a): via-point at y=108 (+30pt stagger)
+    connect_points_via_y(d, inp_x, inp_y, cx(p3a), p3a['y'], 108)
+    # Branch 4 (p4a): via-point at y=123 (+45pt stagger)
+    connect_points_via_y(d, inp_x, inp_y, cx(p4a), p4a['y'], 123)
     connect_down(d, p2a, p2b)
     connect_down(d, p3a, p3b)
     connect_down(d, p4a, p4b)
-    for branch_end in [p1, p2b, p3b, p4b]:
-        connect_down(d, branch_end, concat_node)
+    # Staggered fan-in to concat node
+    # Branch 1 (p1): approach at concat_y - 20
+    concat_y = concat_node['y']
+    connect_points_via_y(d, cx(p1), p1['y'] + p1['h'], cx(concat_node), concat_y, concat_y - 20)
+    # Branch 2 (p2b): approach at concat_y - 35 (+15pt stagger)
+    connect_points_via_y(d, cx(p2b), p2b['y'] + p2b['h'], cx(concat_node), concat_y, concat_y - 35)
+    # Branch 3 (p3b): approach at concat_y - 50 (+30pt stagger)
+    connect_points_via_y(d, cx(p3b), p3b['y'] + p3b['h'], cx(concat_node), concat_y, concat_y - 50)
+    # Branch 4 (p4b): approach at concat_y - 65 (+45pt stagger)
+    connect_points_via_y(d, cx(p4b), p4b['y'] + p4b['h'], cx(concat_node), concat_y, concat_y - 65)
     connect_down(d, concat_node, out)
     return make_entry('Inception Module', d)
 
@@ -520,9 +536,18 @@ def model_yolo_head():
         obj = d.add_vertex('obj', 338, y - 10, 58, 24, 'output')
         cls = d.add_vertex('class', 426, y - 10, 58, 24, 'output')
         connect_right(d, feat, pred)
-        connect_right(d, pred, bbox)
-        connect_right(d, pred, obj)
-        connect_right(d, pred, cls)
+        # Fan-out from pred to 3 outputs using staggered via-points
+        pred_r_x, pred_r_y = right(pred)
+        bbox_l_x, bbox_l_y = left(bbox)
+        obj_l_x, obj_l_y = left(obj)
+        cls_l_x, cls_l_y = left(cls)
+        
+        # Route 1 (bbox): direct route via pred_r_y
+        connect_points_via_y(d, pred_r_x, pred_r_y, bbox_l_x, bbox_l_y, pred_r_y)
+        # Route 2 (obj): staggered +15pt
+        connect_points_via_y(d, pred_r_x, pred_r_y, obj_l_x, obj_l_y, pred_r_y + 15)
+        # Route 3 (cls): staggered +30pt
+        connect_points_via_y(d, pred_r_x, pred_r_y, cls_l_x, cls_l_y, pred_r_y + 30)
     return make_entry('YOLO Head', d)
 
 
@@ -573,11 +598,47 @@ def model_fcn_decoder():
     heatmap = d.add_vertex('Heatmap', 500, 165, 70, 30, 'heatmap')
 
     connect_right(d, f5, up1)
-    connect_points(d, right(up1)[0], right(up1)[1], left(add1)[0], left(add1)[1])
-    connect_points(d, right(f4)[0], right(f4)[1], left(add1)[0], left(add1)[1])
+
+    # Add1: Routes from up1 (top) and f4 (bottom) with staggered via-points
+
+    # Up1 -> Add1: Route above add1 (via_y = 81)
+    up1_rx, up1_ry = right(up1)
+    add1_lx, add1_ly = left(add1)
+    via_y_up1 = 81  # Above add1 (center at 96)
+    connect_points(d, up1_rx, up1_ry, up1_rx + 15, up1_ry, 'arrow_seg')
+    connect_points(d, up1_rx + 15, up1_ry, up1_rx + 15, via_y_up1, 'arrow_seg')
+    connect_points(d, up1_rx + 15, via_y_up1, add1_lx, via_y_up1, 'arrow_seg')
+    connect_points(d, add1_lx, via_y_up1, add1_lx, add1_ly, 'arrow')
+
+    # F4 -> Add1: Route below add1 (via_y = 111)
+    f4_rx, f4_ry = right(f4)
+    via_y_f4 = 111  # Below add1 (center at 96)
+    connect_points(d, f4_rx, f4_ry, f4_rx + 15, f4_ry, 'arrow_seg')
+    connect_points(d, f4_rx + 15, f4_ry, f4_rx + 15, via_y_f4, 'arrow_seg')
+    connect_points(d, f4_rx + 15, via_y_f4, add1_lx, via_y_f4, 'arrow_seg')
+    connect_points(d, add1_lx, via_y_f4, add1_lx, add1_ly, 'arrow')
+
     connect_right(d, add1, up2)
-    connect_points(d, right(up2)[0], right(up2)[1], left(add2)[0], left(add2)[1])
-    connect_points(d, right(f3)[0], right(f3)[1], left(add2)[0], left(add2)[1])
+
+    # Add2: Routes from up2 (top) and f3 (bottom) with staggered via-points
+
+    # Up2 -> Add2: Route above add2 (via_y = 151)
+    up2_rx, up2_ry = right(up2)
+    add2_lx, add2_ly = left(add2)
+    via_y_up2 = 151  # Above add2 (center at 166)
+    connect_points(d, up2_rx, up2_ry, up2_rx + 15, up2_ry, 'arrow_seg')
+    connect_points(d, up2_rx + 15, up2_ry, up2_rx + 15, via_y_up2, 'arrow_seg')
+    connect_points(d, up2_rx + 15, via_y_up2, add2_lx, via_y_up2, 'arrow_seg')
+    connect_points(d, add2_lx, via_y_up2, add2_lx, add2_ly, 'arrow')
+
+    # F3 -> Add2: Route below add2 (via_y = 181)
+    f3_rx, f3_ry = right(f3)
+    via_y_f3 = 181  # Below add2 (center at 166)
+    connect_points(d, f3_rx, f3_ry, f3_rx + 15, f3_ry, 'arrow_seg')
+    connect_points(d, f3_rx + 15, f3_ry, f3_rx + 15, via_y_f3, 'arrow_seg')
+    connect_points(d, f3_rx + 15, via_y_f3, add2_lx, via_y_f3, 'arrow_seg')
+    connect_points(d, add2_lx, via_y_f3, add2_lx, add2_ly, 'arrow')
+
     connect_right(d, add2, up3)
     connect_right(d, up3, heatmap)
     return make_entry('FCN Decoder', d)
@@ -704,8 +765,15 @@ def model_vit():
 
     connect_right(d, patch, embed)
     connect_right(d, embed, merge)
-    connect_points(d, right(cls)[0], right(cls)[1], left(merge)[0], left(merge)[1])
-    connect_points(d, right(pos)[0], right(pos)[1], left(merge)[0], left(merge)[1])
+    # Fan-in from cls and pos to merge using staggered via-points
+    cls_r_x, cls_r_y = right(cls)
+    pos_r_x, pos_r_y = right(pos)
+    merge_l_x, merge_l_y = left(merge)
+    
+    # Route 1 (cls → merge): via_x closer to merge
+    connect_points_via_x(d, cls_r_x, cls_r_y, merge_l_x, merge_l_y, merge_l_x - 15)
+    # Route 2 (pos → merge): via_x staggered -30pt
+    connect_points_via_x(d, pos_r_x, pos_r_y, merge_l_x, merge_l_y, merge_l_x - 30)
     connect_right(d, merge, enc)
     connect_right(d, enc, mlp)
     connect_right(d, mlp, out)
@@ -766,9 +834,13 @@ def model_multi_head_attention_detail():
     concat_node = d.add_vertex('C', 451, 140, 32, 32, 'concat')
     fc = d.add_vertex('FC Out', 513, 139, 70, 34, 'fc')
 
-    connect_points(d, right(inp)[0], right(inp)[1], left(q)[0], left(q)[1])
-    connect_points(d, right(inp)[0], right(inp)[1], left(k)[0], left(k)[1])
-    connect_points(d, right(inp)[0], right(inp)[1], left(v)[0], left(v)[1])
+    # Staggered fan-out from input to Q, K, V using different via-points
+    # Route 1 (to Q): Via-point at x=78
+    connect_points_via_x(d, right(inp)[0], right(inp)[1], left(q)[0], left(q)[1], 78)
+    # Route 2 (to K): Via-point at x=93 (middle, +15pt stagger)
+    connect_points_via_x(d, right(inp)[0], right(inp)[1], left(k)[0], left(k)[1], 93)
+    # Route 3 (to V): Via-point at x=108 (+30pt stagger)
+    connect_points_via_x(d, right(inp)[0], right(inp)[1], left(v)[0], left(v)[1], 108)
     connect_points(d, right(q)[0], right(q)[1], left(mat1)[0], left(mat1)[1])
     connect_points(d, right(k)[0], right(k)[1], left(mat1)[0], left(mat1)[1])
     connect_right(d, mat1, scale)
@@ -816,10 +888,28 @@ def model_vae():
     connect_points(d, right(mul)[0], right(mul)[1], left(add)[0], left(add)[1])
     connect_right(d, add, dec)
     connect_right(d, dec, out)
-    connect_points(d, cx(mu), mu['y'], cx(kl), kl['y'] + kl['h'], 'arrow_skip')
-    connect_points(d, cx(sigma), sigma['y'], cx(kl), kl['y'] + kl['h'], 'arrow_skip')
-    connect_points(d, cx(inp), inp['y'], cx(recon), recon['y'] + recon['h'], 'arrow_skip')
-    connect_points(d, cx(out), out['y'], cx(recon), recon['y'] + recon['h'], 'arrow_skip')
+    # Route loss connections via TOP bus (V-H-V pattern) to avoid crossing main flow
+    top_bus_y = 40  # Above mu (y=70, -30 margin)
+    
+    # mu → KL: vertical up to top_bus, horizontal left, vertical down
+    connect_points(d, cx(mu), mu['y'], cx(mu), top_bus_y, 'arrow_skip')  # V
+    connect_points(d, cx(mu), top_bus_y, cx(kl), top_bus_y, 'arrow_skip')  # H
+    connect_points(d, cx(kl), top_bus_y, cx(kl), kl['y'] + kl['h'], 'arrow_skip')  # V
+    
+    # sigma → KL: vertical up to top_bus, horizontal left (to kl), vertical down
+    connect_points(d, cx(sigma), sigma['y'], cx(sigma), top_bus_y, 'arrow_skip')  # V
+    connect_points(d, cx(sigma), top_bus_y, cx(kl), top_bus_y, 'arrow_skip')  # H
+    connect_points(d, cx(kl), top_bus_y, cx(kl), kl['y'] + kl['h'], 'arrow_skip')  # V (reuse)
+    
+    # inp → Recon: vertical up to top_bus, horizontal right, vertical down
+    connect_points(d, cx(inp), inp['y'], cx(inp), top_bus_y, 'arrow_skip')  # V
+    connect_points(d, cx(inp), top_bus_y, cx(recon), top_bus_y, 'arrow_skip')  # H
+    connect_points(d, cx(recon), top_bus_y, cx(recon), recon['y'] + recon['h'], 'arrow_skip')  # V
+    
+    # out → Recon: vertical up to top_bus, horizontal right (to recon), vertical down
+    connect_points(d, cx(out), out['y'], cx(out), top_bus_y, 'arrow_skip')  # V
+    connect_points(d, cx(out), top_bus_y, cx(recon), top_bus_y, 'arrow_skip')  # H
+    connect_points(d, cx(recon), top_bus_y, cx(recon), recon['y'] + recon['h'], 'arrow_skip')  # V (reuse)
     return make_entry('VAE', d)
 
 
@@ -840,7 +930,15 @@ def model_gan():
     connect_down(d, g1, g2)
     connect_down(d, g2, fake)
     connect_points(d, right(real)[0], right(real)[1], left(d1)[0], left(d1)[1])
-    connect_points(d, right(fake)[0], right(fake)[1], left(d1)[0], left(d1)[1], 'arrow_curved')
+    # fake→d1 routing: explicit 4-segment path ABOVE real box (avoid crossing)
+    # real box top at y=262, route at y=247 (15pt above)
+    # Pattern: right → down → across → down to discriminator
+    via_x = 245  # 15pt right of fake right edge (230)
+    via_y = 247  # 15pt above real box top (262)
+    connect_points(d, right(fake)[0], right(fake)[1], via_x, right(fake)[1], 'arrow_seg')      # Segment 1: right
+    connect_points(d, via_x, right(fake)[1], via_x, via_y, 'arrow_seg')                        # Segment 2: down
+    connect_points(d, via_x, via_y, left(d1)[0], via_y, 'arrow_seg')                           # Segment 3: across
+    connect_points(d, left(d1)[0], via_y, left(d1)[0], left(d1)[1], 'arrow')                  # Segment 4: down with arrow
     connect_down(d, d1, d2)
     connect_down(d, d2, dout)
     return make_entry('GAN', d)
@@ -941,7 +1039,20 @@ def model_diffusion():
     connect_points(d, right(x1_rev)[0], right(x1_rev)[1], left(x0_rev)[0], left(x0_rev)[1])
     connect_points(d, cx(xt), xt['y'] + xt['h'], cx(xt_rev), xt_rev['y'], 'arrow_label', 'forward noise')
     connect_right(d, xt_rev, unet)
-    connect_points(d, left(unet)[0], left(unet)[1], right(x1_rev)[0], right(x1_rev)[1], 'arrow_curved')
+    # Route from unet back to x1_rev using 4-segment H-V-H-V path (avoid crossing)
+    unet_l_x, unet_l_y = left(unet)
+    x1_rev_r_x, x1_rev_r_y = right(x1_rev)
+    
+    # Calculate via-points to route ABOVE the reverse flow
+    via1_x = unet_l_x - 15  # 15pt left of unet
+    via1_y = unet_l_y  # Same level as unet
+    via2_y = x1_rev_r_y - 20  # 20pt above x1_rev (avoid crossing)
+    
+    # 4-segment routing: H (left from unet) → V (up) → H (left to align with x1_rev) → V (down to x1_rev)
+    connect_points(d, unet_l_x, unet_l_y, via1_x, via1_y, 'arrow_seg')  # H: left from unet
+    connect_points(d, via1_x, via1_y, via1_x, via2_y, 'arrow_seg')  # V: up
+    connect_points(d, via1_x, via2_y, x1_rev_r_x + 30, via2_y, 'arrow_seg')  # H: across
+    connect_points(d, x1_rev_r_x + 30, via2_y, x1_rev_r_x, x1_rev_r_y, 'arrow')  # V: down to x1_rev
     return make_entry('Diffusion Model', d)
 
 
@@ -966,8 +1077,17 @@ def model_bilstm():
     concat_node = d.add_vertex('C', 300, 104, 30, 30, 'concat')
     fc = d.add_vertex('FC', 360, 104, 60, 30, 'fc')
     out = d.add_vertex('Output', 450, 104, 70, 30, 'output')
-    connect_points(d, right(inp)[0], right(inp)[1], left(fwd)[0], left(fwd)[1])
-    connect_points(d, right(inp)[0], right(inp)[1], left(bwd)[0], left(bwd)[1])
+    # Staggered routing: input fans to forward and backward LSTMs with 15pt offset
+    inp_x, inp_y = right(inp)
+    fwd_x, fwd_y = left(fwd)
+    bwd_x, bwd_y = left(bwd)
+    
+    # Route 1: Direct connection to forward LSTM
+    connect_points(d, inp_x, inp_y, fwd_x, fwd_y)
+    
+    # Route 2: Staggered connection to backward LSTM (offset by 15pt downward)
+    via_y = inp_y + 15
+    connect_points_via_y(d, inp_x, inp_y, bwd_x, bwd_y, via_y)
     connect_points(d, right(fwd)[0], right(fwd)[1], left(concat_node)[0], left(concat_node)[1])
     connect_points(d, right(bwd)[0], right(bwd)[1], left(concat_node)[0], left(concat_node)[1])
     connect_right(d, concat_node, fc)
@@ -1035,10 +1155,33 @@ def model_seq2seq_attention():
     connect_right(d, d1, d2)
     connect_right(d, d2, d3)
     connect_right(d, d3, out)
-    for enc_cell in [e1, e2, e3]:
-        connect_points(d, cx(enc_cell), enc_cell['y'], cx(attn), attn['y'] + attn['h'], 'arrow_skip')
-    for dec_cell in [d1, d2, d3]:
-        connect_points(d, cx(attn), attn['y'] + attn['h'], cx(dec_cell), dec_cell['y'], 'arrow_skip')
+    # Encoder→Attention fan-in: 3 encoders converge via vertical bus left of attention
+    attn_top_y = attn['y']
+    bus_x_enc = cx(attn) - 25  # Vertical bus left of attention
+    for i, enc_cell in enumerate([e1, e2, e3]):
+        enc_cx = cx(enc_cell)
+        enc_t_y = enc_cell['y']
+        via_x = bus_x_enc - (i * 15)  # Stagger: 0pt, -15pt, -30pt
+        # Horizontal to bus
+        connect_points(d, enc_cx, enc_t_y, via_x, enc_t_y, 'arrow_skip_seg')
+        # Vertical to attention top
+        connect_points(d, via_x, enc_t_y, via_x, attn_top_y, 'arrow_skip_seg')
+        # Horizontal into attention
+        connect_points(d, via_x, attn_top_y, cx(attn), attn_top_y, 'arrow_skip')
+
+    # Attention→Decoder fan-out: attention bottom fans to 3 decoders via vertical bus right of attention
+    attn_bot_y = attn['y'] + attn['h']
+    bus_x_dec = cx(attn) + 25  # Vertical bus right of attention
+    for i, dec_cell in enumerate([d1, d2, d3]):
+        dec_cx = cx(dec_cell)
+        dec_t_y = dec_cell['y']
+        via_x = bus_x_dec + (i * 15)  # Stagger: 0pt, +15pt, +30pt
+        # Horizontal to bus
+        connect_points(d, cx(attn), attn_bot_y, via_x, attn_bot_y, 'arrow_skip_seg')
+        # Vertical down to decoder level
+        connect_points(d, via_x, attn_bot_y, via_x, dec_t_y, 'arrow_skip_seg')
+        # Horizontal into decoder
+        connect_points(d, via_x, dec_t_y, dec_cx, dec_t_y, 'arrow_skip')
     return make_entry('Seq2Seq + Attention', d)
 
 
@@ -1058,8 +1201,20 @@ def model_siamese_network():
     connect_right(d, in2, enc2)
     connect_right(d, enc1, emb1)
     connect_right(d, enc2, emb2)
-    connect_points(d, right(emb1)[0], right(emb1)[1], left(dist)[0], left(dist)[1])
-    connect_points(d, right(emb2)[0], right(emb2)[1], left(dist)[0], left(dist)[1])
+    # Staggered via-points for convergent edges (emb1→dist and emb2→dist)
+    # Route 1 (emb1→dist): approaches via closer point
+    emb1_x, emb1_y = right(emb1)
+    dist_x, dist_y = left(dist)
+    via1_x = dist_x - 20  # Approach closer
+    connect_points(d, emb1_x, emb1_y, via1_x, emb1_y, 'arrow_seg')
+    connect_points(d, via1_x, emb1_y, dist_x, dist_y, 'arrow')
+    
+    # Route 2 (emb2→dist): staggered approach (15pt further left)
+    emb2_x, emb2_y = right(emb2)
+    via2_x = dist_x - 35  # 15pt further left than route 1
+    connect_points(d, emb2_x, emb2_y, via2_x, emb2_y, 'arrow_seg')
+    connect_points(d, via2_x, emb2_y, via1_x, dist_y, 'arrow_seg')  # Approach via staggered point
+    connect_points(d, via1_x, dist_y, dist_x, dist_y, 'arrow')
     connect_right(d, dist, out)
     return make_entry('Siamese Network', d)
 
@@ -1127,11 +1282,30 @@ def model_efficientnet_mbconv():
     connect_down(d, mul, proj)
     connect_down(d, proj, add)
     connect_down(d, add, out)
-    connect_points(d, right(dw)[0], right(dw)[1], left(gap)[0], left(gap)[1])
+    
+    # SE block routes via FAR LEFT (x=5) to avoid crossing skip connection
+    # GAP: from right of dw → far left bus → down
+    dw_rx, dw_ry = right(dw)
+    gap_lx, gap_ly = left(gap)
+    connect_points_via_x(d, dw_rx, dw_ry, gap_lx, gap_ly, 5, 'arrow')
+    
     connect_down(d, gap, fc)
     connect_down(d, fc, sig)
-    connect_points(d, right(sig)[0], right(sig)[1], left(mul)[0], left(mul)[1])
-    connect_skip_vertical(d, inp, add)
+    
+    # Sigmoid to multiply: routes far left then right
+    sig_lx, sig_ly = left(sig)
+    mul_lx, mul_ly = left(mul)
+    connect_points_via_x(d, sig_lx, sig_ly, mul_lx, mul_ly, 5, 'arrow')
+    
+    # Skip connection routes via FAR RIGHT (x=334, right of MBConv container at x=28+306=334)
+    # Input → far right bus → down → add
+    inp_rx, inp_ry = right(inp)
+    add_tx, add_ty = top(add)
+    skip_bus_x = 334 + 30  # 30pt margin beyond container
+    connect_points(d, inp_rx, inp_ry, skip_bus_x, inp_ry, 'arrow_seg')
+    connect_points(d, skip_bus_x, inp_ry, skip_bus_x, add_ty - 10, 'arrow_seg')
+    connect_points(d, skip_bus_x, add_ty - 10, add_tx, add_ty - 10, 'arrow_seg')
+    connect_points(d, add_tx, add_ty - 10, add_tx, add_ty, 'arrow_skip')
     return make_entry('EfficientNet MBConv', d)
 
 
@@ -1148,10 +1322,24 @@ def model_gat_layer():
 
     connect_right(d, ni, attn)
     connect_right(d, attn, mul)
-    connect_points(d, right(nj)[0], right(nj)[1], left(mul)[0], left(mul)[1])
-    connect_points(d, right(nk)[0], right(nk)[1], left(mul)[0], left(mul)[1])
+    # Staggered fan-in to multiply node (nj, nk)
+    mul_left_x, mul_left_y = left(mul)
+    via_x1 = mul_left_x - 20  # Route 1: nj - closer to mul
+    via_x2 = mul_left_x - 35  # Route 2: nk - staggered by 15pt
+    
+    nj_x, nj_y = right(nj)
+    nk_x, nk_y = right(nk)
+    
+    connect_points_via_x(d, nj_x, nj_y, mul_left_x, mul_left_y, via_x1)
+    connect_points_via_x(d, nk_x, nk_y, mul_left_x, mul_left_y, via_x2)
+    
     connect_right(d, mul, agg)
-    connect_points(d, right(ni)[0], right(ni)[1], left(agg)[0], left(agg)[1])
+    
+    # Staggered fan-in to add node (ni)
+    agg_left_x, agg_left_y = left(agg)
+    via_x3 = agg_left_x - 20
+    ni_x, ni_y = right(ni)
+    connect_points_via_x(d, ni_x, ni_y, agg_left_x, agg_left_y, via_x3)
     connect_right(d, agg, act)
     connect_right(d, act, out)
     return make_entry('GAT Layer', d)
