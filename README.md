@@ -4,6 +4,8 @@ A collection of **159 ready-to-use neural network architecture templates** for [
 
 ## How to Use
 
+**Quickest:** [open the library in draw.io](https://app.diagrams.net/?splash=0&clibs=Uhttps%3A%2F%2Fraw.githubusercontent.com%2FHuanPP%2FNN-Models-drawio-library%2Fmaster%2Fnn_model_library.xml) with one click, nothing to download. For offline use, grab `nn_model_library.xml` or the full zip from the [latest release](https://github.com/HuanPP/NN-Models-drawio-library/releases/latest).
+
 Open `nn_model_library.xml` in draw.io (File > Open Library) to load all 159 templates into the scratchpad. Drag any template onto your canvas and customize as needed.
 
 Each category is also available as a smaller library in `libraries/`, and `nn_components.xml` holds single blocks, operators, arrows and a color legend for drawing your own architectures.
